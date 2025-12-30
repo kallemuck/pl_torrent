@@ -1,76 +1,65 @@
 (function () {
     'use strict';
-    if (!window.Lampa) return;
 
-    const ID = 'pl_public_torrents';
-    const NAME = 'Polish Torrents 🇵🇱';
+    if (!window.Lampa || !Lampa.Parser) return;
+
+    const SOURCE_ID = 'pl_torrents_source';
 
     function isPL(title) {
         return /(^|\W)(pl|polish|lektor|dubbing|napisy)(\W|$)/i.test(title);
     }
 
-    async function searchTPB(query) {
-        const mirrors = [
-            'https://tpb.party',
-            'https://thepiratebay.party'
-        ];
+    async function search1337x(query) {
+        const url = 'https://cors.isomorphic-git.org/https://www.1377x.to/search/' +
+            encodeURIComponent(query) + '/1/';
 
-        for (let m of mirrors) {
-            try {
-                const html = await fetch(
-                    `${m}/search/${encodeURIComponent(query)}/1/99/200`
-                ).then(r => r.text());
+        try {
+            const html = await fetch(url).then(r => r.text());
+            const doc = new DOMParser().parseFromString(html, 'text/html');
 
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const rows = doc.querySelectorAll('tr');
+            const rows = doc.querySelectorAll('table.table-list tr');
+            const out = [];
 
-                const out = [];
+            rows.forEach(row => {
+                const titleEl = row.querySelector('td.name a:last-child');
+                const magnetEl = row.querySelector('a[href^="magnet:"]');
 
-                rows.forEach(row => {
-                    const titleEl = row.querySelector('.detName a');
-                    const magnetEl = row.querySelector('a[href^="magnet:"]');
+                if (!titleEl || !magnetEl) return;
+                if (!isPL(titleEl.textContent)) return;
 
-                    if (!titleEl || !magnetEl) return;
-                    if (!isPL(titleEl.textContent)) return;
-
-                    out.push({
-                        title: titleEl.textContent,
-                        magnet: magnetEl.href
-                    });
+                out.push({
+                    title: titleEl.textContent,
+                    magnet: magnetEl.href
                 });
+            });
 
-                if (out.length) return out;
-            } catch (e) {}
+            return out;
+        } catch (e) {
+            return [];
         }
-        return [];
     }
 
-    Lampa.Plugin.add(ID, {
-        title: NAME,
-        version: '1.0.0',
+    Lampa.Parser.add({
+        id: SOURCE_ID,
+        name: 'Polish Torrents 🇵🇱',
+        type: 'all',
 
-        start: function () {
-            Lampa.Parser.add({
-                id: ID,
-                name: NAME,
-                type: 'all',
+        search: async function (params, oncomplete) {
+            const query =
+                (params.title || '') +
+                (params.year ? ' ' + params.year : '');
 
-                search: async function (params, oncomplite) {
-                    const q =
-                        (params.title || '') +
-                        (params.year ? ' ' + params.year : '');
+            const items = await search1337x(query);
 
-                    const items = await searchTPB(q);
-
-                    oncomplite(items.map(i => ({
-                        title: i.title,
-                        url: i.magnet,
-                        quality: 'Torrent',
-                        info: 'PL 🇵🇱',
-                        file: true
-                    })));
-                }
-            });
+            oncomplete(items.map(i => ({
+                title: i.title,
+                url: i.magnet,
+                quality: 'Torrent',
+                info: 'PL 🇵🇱',
+                file: true
+            })));
         }
     });
+
+    console.log('PL torrent source registered');
 })();
