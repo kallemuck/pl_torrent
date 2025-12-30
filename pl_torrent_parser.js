@@ -1,73 +1,68 @@
 (function () {
-    'use strict';
-
-    if (!window.Lampa) return;
-
-    const SOURCE_ID = 'pl_public_source';
+    if (!window.Lampa || !Lampa.Parser) return;
 
     function isPL(title) {
-        return /(^|[^a-z])(pl|polish|lektor|dubbing|napisy)([^a-z]|$)/i.test(title);
+        title = title.toLowerCase();
+        return title.indexOf(' pl ') > -1 ||
+               title.indexOf('polish') > -1 ||
+               title.indexOf('lektor') > -1 ||
+               title.indexOf('dubbing') > -1 ||
+               title.indexOf('napisy') > -1;
     }
 
-    async function searchTPB(query) {
-        const mirrors = [
-            'https://thepiratebay.party',
-            'https://tpb.party'
-        ];
+    function search(query, callback) {
+        var url = 'https://thepiratebay.party/search/' +
+            encodeURIComponent(query) + '/1/99/200';
 
-        for (let m of mirrors) {
-            try {
-                const res = await fetch(
-                    m + '/search/' + encodeURIComponent(query) + '/1/99/200'
-                );
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
 
-                const html = await res.text();
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const rows = doc.querySelectorAll('tr');
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
 
-                const out = [];
+            if (xhr.status !== 200) {
+                callback([]);
+                return;
+            }
 
-                rows.forEach(row => {
-                    const titleEl = row.querySelector('.detName a');
-                    const magnetEl = row.querySelector('a[href^="magnet:"]');
+            var html = xhr.responseText;
+            var results = [];
 
-                    if (!titleEl || !magnetEl) return;
-                    if (!isPL(titleEl.textContent)) return;
+            var rows = html.split('<tr>');
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i].indexOf('magnet:?') === -1) continue;
+                if (!isPL(rows[i])) continue;
 
-                    out.push({
-                        title: titleEl.textContent,
-                        magnet: magnetEl.href
+                var magnet = rows[i].match(/magnet:\?[^"]+/);
+                var title = rows[i].match(/class="detLink".*?>(.*?)</);
+
+                if (magnet && title) {
+                    results.push({
+                        title: title[1],
+                        url: magnet[0],
+                        quality: 'Torrent',
+                        info: 'PL 🇵🇱',
+                        file: true
                     });
-                });
+                }
+            }
 
-                if (out.length) return out;
-            } catch (e) {}
-        }
+            callback(results);
+        };
 
-        return [];
+        xhr.send();
     }
 
     Lampa.Parser.add({
-        id: SOURCE_ID,
+        id: 'pl_simple',
         name: 'Polish Torrents 🇵🇱',
         type: 'all',
 
-        search: async function (params, oncomplete) {
-            const query =
-                (params.title || '') +
-                (params.year ? ' ' + params.year : '');
+        search: function (params, oncomplete) {
+            var q = params.title || '';
+            if (params.year) q += ' ' + params.year;
 
-            const items = await searchTPB(query);
-
-            oncomplete(items.map(i => ({
-                title: i.title,
-                url: i.magnet,
-                quality: 'Torrent',
-                info: 'PL 🇵🇱',
-                file: true
-            })));
+            search(q, oncomplete);
         }
     });
-
-    console.log('[PL] parser loaded');
 })();
