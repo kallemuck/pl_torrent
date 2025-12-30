@@ -1,42 +1,50 @@
 (function () {
     'use strict';
 
-    if (!window.Lampa || !Lampa.Parser) return;
+    if (!window.Lampa) return;
 
-    const SOURCE_ID = 'pl_torrents_source';
+    const SOURCE_ID = 'pl_public_source';
 
     function isPL(title) {
-        return /(^|\W)(pl|polish|lektor|dubbing|napisy)(\W|$)/i.test(title);
+        return /(^|[^a-z])(pl|polish|lektor|dubbing|napisy)([^a-z]|$)/i.test(title);
     }
 
-    async function search1337x(query) {
-        const url = 'https://cors.isomorphic-git.org/https://www.1377x.to/search/' +
-            encodeURIComponent(query) + '/1/';
+    async function searchTPB(query) {
+        const mirrors = [
+            'https://thepiratebay.party',
+            'https://tpb.party'
+        ];
 
-        try {
-            const html = await fetch(url).then(r => r.text());
-            const doc = new DOMParser().parseFromString(html, 'text/html');
+        for (let m of mirrors) {
+            try {
+                const res = await fetch(
+                    m + '/search/' + encodeURIComponent(query) + '/1/99/200'
+                );
 
-            const rows = doc.querySelectorAll('table.table-list tr');
-            const out = [];
+                const html = await res.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const rows = doc.querySelectorAll('tr');
 
-            rows.forEach(row => {
-                const titleEl = row.querySelector('td.name a:last-child');
-                const magnetEl = row.querySelector('a[href^="magnet:"]');
+                const out = [];
 
-                if (!titleEl || !magnetEl) return;
-                if (!isPL(titleEl.textContent)) return;
+                rows.forEach(row => {
+                    const titleEl = row.querySelector('.detName a');
+                    const magnetEl = row.querySelector('a[href^="magnet:"]');
 
-                out.push({
-                    title: titleEl.textContent,
-                    magnet: magnetEl.href
+                    if (!titleEl || !magnetEl) return;
+                    if (!isPL(titleEl.textContent)) return;
+
+                    out.push({
+                        title: titleEl.textContent,
+                        magnet: magnetEl.href
+                    });
                 });
-            });
 
-            return out;
-        } catch (e) {
-            return [];
+                if (out.length) return out;
+            } catch (e) {}
         }
+
+        return [];
     }
 
     Lampa.Parser.add({
@@ -49,7 +57,7 @@
                 (params.title || '') +
                 (params.year ? ' ' + params.year : '');
 
-            const items = await search1337x(query);
+            const items = await searchTPB(query);
 
             oncomplete(items.map(i => ({
                 title: i.title,
@@ -61,5 +69,5 @@
         }
     });
 
-    console.log('PL torrent source registered');
+    console.log('[PL] parser loaded');
 })();
