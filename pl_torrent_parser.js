@@ -1,65 +1,65 @@
 (function () {
+    'use strict';
+
     if (!window.Lampa || !Lampa.Parser) return;
 
-    function isPL(text) {
-        text = text.toLowerCase();
-        return text.indexOf(' pl ') !== -1 ||
-               text.indexOf('polish') !== -1 ||
-               text.indexOf('lektor') !== -1 ||
-               text.indexOf('dubbing') !== -1 ||
-               text.indexOf('napisy') !== -1;
+    function enc(v){ return encodeURIComponent(v || ''); }
+
+    function buildLinks(title, year){
+        var q = title + (year ? ' ' + year : '');
+        // Легальные поиски/каталоги в PL
+        return [
+            {name:'YouTube (PL)', url:'https://www.youtube.com/results?search_query=' + enc(q + ' zwiastun pl')},
+            {name:'JustWatch PL',  url:'https://www.justwatch.com/pl/wyszukaj?q=' + enc(q)},
+            {name:'TVP VOD',       url:'https://vod.tvp.pl/wyszukiwarka?query=' + enc(q)},
+            {name:'Player.pl',    url:'https://player.pl/szukaj?query=' + enc(q)},
+            {name:'Polsat Box Go',url:'https://polsatboxgo.pl/wyszukiwarka?query=' + enc(q)},
+            {name:'Canal+ PL',    url:'https://www.canalplus.com/pl/search?q=' + enc(q)}
+        ];
     }
 
-    function search(query, callback) {
-        var url = 'https://thepiratebay.party/search/' +
-            encodeURIComponent(query) + '/1/99/200';
+    function tryOpen(url){
+        // разные сборки LAMPA имеют разные хелперы — пробуем по очереди
+        try {
+            if (Lampa.Utils && Lampa.Utils.openUrl) return Lampa.Utils.openUrl(url);
+            if (Lampa.Platform && Lampa.Platform.openURL) return Lampa.Platform.openURL(url);
+        } catch (e) {}
 
-        var xhr = new XMLHttpRequest();
-        xhr.open('GET', url, true);
-
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== 4) return;
-
-            var results = [];
-
-            if (xhr.status === 200) {
-                var rows = xhr.responseText.split('<tr>');
-                for (var i = 0; i < rows.length; i++) {
-                    if (rows[i].indexOf('magnet:?') === -1) continue;
-                    if (!isPL(rows[i])) continue;
-
-                    var magnet = rows[i].match(/magnet:\?[^"]+/);
-                    var title = rows[i].match(/class="detLink".*?>(.*?)</);
-
-                    if (magnet && title) {
-                        results.push({
-                            title: title[1],
-                            url: magnet[0],
-                            quality: 'Torrent',
-                            info: 'PL 🇵🇱',
-                            file: true
-                        });
-                    }
-                }
-            }
-
-            callback(results);
-        };
-
-        xhr.send();
+        // fallback: показываем ссылку, чтобы ты мог открыть вручную
+        if (Lampa.Noty && Lampa.Noty.show) Lampa.Noty.show(url);
     }
 
     Lampa.Parser.add({
-        id: 'pl_only',
-        name: 'Polish Torrents 🇵🇱',
+        id: 'pl_legal',
+        name: 'PL 🇵🇱 (Legal)',
         type: 'all',
 
         search: function (params, oncomplete) {
-            var q = params.title || '';
-            if (params.year) q += ' ' + params.year;
-            search(q, oncomplete);
+            var title = params.title || '';
+            var year  = params.year || '';
+
+            var links = buildLinks(title, year);
+
+            var out = [];
+            for (var i = 0; i < links.length; i++){
+                (function(item){
+                    out.push({
+                        title: item.name,
+                        // url — это “действие”: при выборе откроем ссылку
+                        url: item.url,
+                        quality: 'WEB',
+                        info: 'Открыть поиск',
+                        file: true,
+                        // некоторые сборки LAMPA вызывают playback по url;
+                        // поэтому мы добавим "магнит" не используем. Здесь просто ссылка.
+                        onselect: function(){ tryOpen(item.url); }
+                    });
+                })(links[i]);
+            }
+
+            oncomplete(out);
         }
     });
 
-    Lampa.Noty.show('PL parser loaded');
+    if (Lampa.Noty && Lampa.Noty.show) Lampa.Noty.show('PL Legal source loaded');
 })();
